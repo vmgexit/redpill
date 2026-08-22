@@ -60,7 +60,6 @@ static Probe collect() {
     p.cpu_vendor = regs_to_str(r[1], r[3], r[2]);
 
     cpuid_at(1, 0, r);
-    /* revisit */
     p.vmx = (r[2] & (1 << 5)) != 0;
     p.smx = (r[2] & (1 << 6)) != 0;
     p.hypervisor_present = (r[2] & (1 << 31)) != 0;
@@ -123,7 +122,6 @@ static void report(const Probe& p) {
         printf("hv vendor       %s  (%s)\n", p.hv_vendor.c_str(), hv_name(p.hv_vendor));
         printf("hv max leaf     0x%X  signature 0x%08X\n",
                p.max_hv_leaf, p.hv_signature);
-    /* revisit */
     }
     printf("\n");
 
@@ -187,3 +185,29 @@ static int selftest() {
 
     ck(sizeof(Dtr) == 10, "Dtr is 10 bytes");
     ck(offsetof(Dtr, base) == 2, "Dtr.base at offset 2");
+    ck(regs_to_str(0x756E6547, 0x49656E69, 0x6C65746E) == "GenuineIntel",
+       "cpu vendor string order is EBX/EDX/ECX");
+    ck(regs_to_str(0x7263694D, 0x666F736F, 0x76482074) == "Microsoft Hv",
+       "hypervisor vendor string order is EBX/ECX/EDX");
+    ck(strcmp(hv_name("Microsoft Hv"), "Hyper-V / VBS") == 0, "Hyper-V vendor name");
+    ck(strcmp(hv_name("VMwareVMware"), "VMware") == 0, "VMware vendor name");
+    ck(strcmp(hv_name("KVMKVMKVM"), "KVM") == 0, "KVM vendor name");
+    ck(strcmp(hv_name("something else"), "unknown") == 0, "unknown vendor name");
+    auto sig = [](uint32_t v) {
+        std::string s;
+        for (int i = 0; i < 4; i++) s.push_back((char)((v >> (8 * i)) & 0xff));
+        return s;
+    };
+    ck(sig(0x31237648) == "Hv#1", "Hyper-V interface signature decodes to Hv#1");
+
+    printf("  %s\n", bad ? "FAILED" : "PASS");
+    return bad ? 1 : 0;
+}
+
+int main(int argc, char** argv) {
+    if (argc > 1 && !strcmp(argv[1], "--selftest")) return selftest();
+    Probe p = collect();
+    if (argc > 1 && !strcmp(argv[1], "--json")) report_json(p);
+    else report(p);
+    return 0;
+}
