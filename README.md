@@ -84,7 +84,6 @@ self-contained. `ml64 /c /Fobuild\desc.obj` produces the descriptor object.
 | source | field | meaning |
 | --- | --- | --- |
 | CPUID 0 | `cpu_vendor`, `max_leaf` | 12-byte vendor string, highest basic leaf |
-TODO: expand this section
 | CPUID 1 ECX | `vmx`, `smx`, `hypervisor_present` | bits 5, 6, 31 |
 | CPUID 7 | `leaf7_ebx`, `xsaves` | feature bits, ECX bit 3 |
 | CPUID `0x80000000` | `max_ext_leaf` | highest extended leaf |
@@ -172,7 +171,6 @@ struct Dtr {
 ```
 
 Without the pragma, `base` lands at offset 8 and every printed IDT/GDT base is
-TODO: expand this section
 garbage. `sizeof(Dtr) == 10` and `offsetof(Dtr, base) == 2` are asserted in the
 selftest.
 
@@ -260,3 +258,40 @@ nothing here tries to cross it.
 The name refers to the classic `SIDT` trick: on 32-bit Windows, a VMware guest's
 IDT base sat above `0xD0000000` while a native one did not, so a single
 unprivileged instruction could detect virtualization.
+
+On x64 Windows the check is meaningless. Kernel addresses occupy the upper half
+of the canonical range on every system, hypervisor or not — the IDT base here is
+`0xFFFFF80000001000`, which would have "detected" a VM on bare metal too. The
+tool still prints the IDT/GDT values because they are useful for a different
+purpose: spotting a corrupted descriptor table after a failed VMXON. It does not
+use them to claim anything about virtualization.
+
+---
+
+## Verification
+
+`redpill --selftest` runs nine assertions with no hardware dependency:
+
+```
+  ok    Dtr is 10 bytes
+  ok    Dtr.base at offset 2
+  ok    cpu vendor string order is EBX/EDX/ECX
+  ok    hypervisor vendor string order is EBX/ECX/EDX
+  ok    Hyper-V vendor name
+  ok    VMware vendor name
+  ok    KVM vendor name
+  ok    unknown vendor name
+  ok    Hyper-V interface signature decodes to Hv#1
+  PASS
+```
+
+The remaining output is a live probe and therefore not asserted — the CPUID and
+descriptor values differ per machine and per boot configuration, so
+`example/out.txt` is one specific run from this box. The probe printed all
+fields and exited 0; no driver, no reboot, no firmware access.
+
+---
+
+## License
+
+Unlicense — public domain. Do what you like with it; no strings attached.
