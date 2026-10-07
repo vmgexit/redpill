@@ -1,0 +1,22 @@
+redpill 0.3  |  x64 ring-3 capability probe
+------------------------------------------------------------
+cpu vendor      GenuineIntel   max leaf 0x16  max ext 0x80000008
+leaf 1 ecx      VMX no   SMX no   HV-present yes
+ext 80000001    SVM (amd-v) no
+leaf 7 ebx      0x009C6FBD  XSAVES no
+hv vendor       Microsoft Hv  (Hyper-V / VBS)
+hv max leaf     0x4000000C  signature 0x31237648
+
+idt             base 0xFFFFF80000001000  limit 0x0FFF
+gdt             base 0xFFFFF8534B590000  limit 0x007F
+ldt             0x0000  tr 0x0040
+
+verdict
+  already inside Hyper-V / VBS
+  vmx masked by the outer hv (typical for hyper-v without nesting)
+
+ring-3 limits
+  IA32_FEATURE_CONTROL (0x3A), IA32_VMX_BASIC (0x480) and CR4.VMXE
+  are not readable here; that needs a ring-0 driver.
+  the classic redpill idt-base check is useless on x64 windows:
+  the idt lives in the kernel half of the address space regardless.
