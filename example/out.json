@@ -1,0 +1,20 @@
+{
+  "cpu_vendor": "GenuineIntel",
+  "max_leaf": 22,
+  "max_ext_leaf": 2147483656,
+  "vmx": false,
+  "smx": false,
+  "svm": false,
+  "leaf7_ebx": "0x009C6FBD",
+  "xsaves": false,
+  "hypervisor_present": true,
+  "hv_vendor": "Microsoft Hv",
+  "hv_max_leaf": 1073741836,
+  "hv_signature": "0x31237648",
+  "idt_base": "0xFFFFF80000001000",
+  "idt_limit": 4095,
+  "gdt_base": "0xFFFFF8534B590000",
+  "gdt_limit": 127,
+  "ldt": 0,
+  "tr": 64
+}
