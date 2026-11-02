@@ -1,0 +1,11 @@
+redpill selftest
+  ok    Dtr is 10 bytes
+  ok    Dtr.base at offset 2
+  ok    cpu vendor string order is EBX/EDX/ECX
+  ok    hypervisor vendor string order is EBX/ECX/EDX
+  ok    Hyper-V vendor name
+  ok    VMware vendor name
+  ok    KVM vendor name
+  ok    unknown vendor name
+  ok    Hyper-V interface signature decodes to Hv#1
+  PASS
