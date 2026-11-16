@@ -1,0 +1,32 @@
+- cpuid leaf 1 ECX bit 5 is VMX, bit 6 is SMX, bit 31 is hypervisor present.
+  bit 31 means "there is a hypervisor", not "vmx is usable".
+- leaf 0x40000000 is only meaningful when bit 31 is set. EAX is the max
+  hypervisor leaf, EBX/ECX/EDX are a 12-byte vendor string in that order.
+- Hyper-V leaf 0x40000001 EAX reads 0x31237648, i.e. "Hv#1". nice sanity check.
+- AMD-V is ext leaf 0x80000001 ECX bit 2. check max ext leaf first.
+- sidt/sgdt store 2-byte limit then 8-byte base in 64-bit mode = 10 bytes.
+  the C struct has to be packed or the base lands at offset 8 instead of 2.
+- sldt/str are unprivileged. reading a selector is not the same as reading the
+  descriptor contents; that would need the gdt base plus the selector index.
+- the old "idt base above 0xd0000000 means vmware" redpill is dead on x64
+  windows. kernel addresses are in the upper half of the canonical range for
+  every OS, hypervisor or not. i still print the values because they are useful
+  for spotting a broken gdt/idt after a failed vmxon.
+- what ring 3 cannot tell you: whether IA32_FEATURE_CONTROL is locked, whether
+  vmxon is allowed outside SMX, the vmxon region size, or the allowed-1 controls.
+  those are MSR 0x3A and 0x480..0x491 and need a driver.
+- with Hyper-V / VBS enabled, leaf 1 VMX is usually 0 even on a VT-x capable
+  CPU. don't conclude the hardware lacks it. that is a boot-configuration
+  statement, not a hardware one.
+- cpu vendor leaf 0 order is EBX/EDX/ECX, hypervisor vendor leaf 0x40000000
+  order is EBX/ECX/EDX. i swapped them on the first pass and got "GenuineelntI".
+  the selftest pins both with synthetic register values.
+- --selftest has 9 hardware-independent assertions. the live cpuid and
+  descriptor values are deliberately not asserted: they change per machine and
+  per boot config, and example/out.txt is just one run from this box. a probe
+  that claims a specific IDT base would be a lie.
+- Dtr has to be #pragma pack(1). without it base sits at offset 8, not 2, and
+  every printed idt/gdt base is garbage. sizeof and offsetof are both asserted.
+- str/sldt return selectors, not descriptor contents. reading the actual
+  segment descriptor needs the gdt base plus selector index, which is kernel
+  memory. don't overclaim what those two values mean.
