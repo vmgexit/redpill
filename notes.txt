@@ -10,18 +10,17 @@
   descriptor contents; that would need the gdt base plus the selector index.
 - the old "idt base above 0xd0000000 means vmware" redpill is dead on x64
   windows. kernel addresses are in the upper half of the canonical range for
-  every OS, hypervisor or not. i still print the values because they are useful
-  for spotting a broken gdt/idt after a failed vmxon.
+  every OS, hypervisor or not. the values are printed as raw register state and
+  carry no virtualization claim.
 - what ring 3 cannot tell you: whether IA32_FEATURE_CONTROL is locked, whether
   vmxon is allowed outside SMX, the vmxon region size, or the allowed-1 controls.
   those are MSR 0x3A and 0x480..0x491 and need a driver.
-- with Hyper-V / VBS enabled, leaf 1 VMX is usually 0 even on a VT-x capable
+- with Hyper-V / VBS owning VT-x, leaf 1 VMX is masked even on a VT-x capable
   CPU. don't conclude the hardware lacks it. that is a boot-configuration
   statement, not a hardware one.
 - cpu vendor leaf 0 order is EBX/EDX/ECX, hypervisor vendor leaf 0x40000000
-  order is EBX/ECX/EDX. i swapped them on the first pass and got "GenuineelntI".
-  the selftest pins both with synthetic register values.
-- --selftest has 9 hardware-independent assertions. the live cpuid and
+  order is EBX/ECX/EDX. the selftest pins both with synthetic register values.
+- --selftest has 11 hardware-independent assertions. the live cpuid and
   descriptor values are deliberately not asserted: they change per machine and
   per boot config, and example/out.txt is just one run from this box. a probe
   that claims a specific IDT base would be a lie.

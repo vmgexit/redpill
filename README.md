@@ -5,22 +5,20 @@ can this machine do VMXON at all. It reads CPUID leaves, the hypervisor-present
 bit, the hypervisor vendor leaf, and the IDT/GDT/LDT/TR descriptor registers via
 a small ml64 object — then states what it cannot tell you.
 
-status: done. built and run on this machine; `example/` is one live run from it.
-no kernel code, no MSRs, no driver, no claims it cannot back up.
+status: done. built and run on this machine; `example/` is one live run with
+line endings normalized to LF. no kernel code, no MSRs, no driver.
 
 ---
 
 ## Why this exists
 
 A kernel anti-cheat or hypervisor project starts with an assumption: that VT-x is
-available to you. On a Windows box with VBS or Hyper-V enabled that assumption is
-usually false — Hyper-V already owns VT-x, and a normal guest is not given nested
-virtualization. Building a driver that calls `__vmx_on` on such a machine wastes a
-week on a failure that a fifteen-line CPUID check would have predicted.
+available to you. With VBS or Hyper-V enabled, Hyper-V owns VT-x and a normal
+guest is not given nested virtualization. Building a driver that calls `__vmx_on`
+on such a machine wastes a week on a failure that a small CPUID check predicts.
 
-`redpill` is that check. It is deliberately the first repo in the set, and it is
-deliberately user-mode: it needs no signing, no test mode, no reboot, and it
-cannot destabilise the machine.
+`redpill` is that check. It is deliberately user-mode: it needs no signing, no
+test mode, no reboot, and it cannot destabilise the machine.
 
 ---
 
@@ -33,7 +31,8 @@ redpill/
 │   └── desc.asm           sidt / sgdt / sldt / str, emitted as opcode bytes
 ├── example/
 │   ├── out.txt            captured text output from this machine
-│   └── out.json           captured json output
+│   ├── out.json           captured json output
+│   └── selftest.txt       captured selftest output
 ├── build.bat              ml64 → cl → selftest → smoke → json
 ├── notes.txt              notes from the cpuid runs
 ├── LICENSE                Unlicense
@@ -65,17 +64,30 @@ cd redpill
 build.bat
 ```
 
-Output: `build\redpill.exe`. The build runs three stages and stops on any failure:
+Output: `build\redpill.exe`. The build has five failure-checked stages:
+`ml64` for the descriptor object, `cl` for the exe, then `selftest`, `smoke`
+and `json` runs of the binary. Abridged output:
 
 ```
-[*] selftest   redpill.exe --selftest   (9 assertions, no hardware dependency)
-[*] smoke      redpill.exe              (real output)
-[*] json       redpill.exe --json
+[*] selftest
+  ok    Dtr is 10 bytes
+  ...
+  PASS
+[*] smoke
+redpill 0.3  |  x64 ring-3 capability probe
+  ...
+[*] json
+{
+  "cpu_vendor": "GenuineIntel",
+  ...
+}
 [+] build\redpill.exe
 ```
 
-Flags: `/std:c++17 /EHsc /O2 /W3 /MT`, `/DUNICODE`. `/MT` keeps the exe
-self-contained. `ml64 /c /Fobuild\desc.obj` produces the descriptor object.
+Flags: `ml64 /nologo /c /Fobuild\desc.obj src\desc.asm`, then
+`cl /nologo /std:c++17 /EHsc /O2 /W3 /MT /DUNICODE /D_UNICODE
+/Fe:build\redpill.exe src\redpill.cpp build\desc.obj`. `/MT` keeps the exe
+self-contained; CRT only, no WDK and no extra libraries.
 
 ---
 
@@ -85,7 +97,7 @@ self-contained. `ml64 /c /Fobuild\desc.obj` produces the descriptor object.
 | --- | --- | --- |
 | CPUID 0 | `cpu_vendor`, `max_leaf` | 12-byte vendor string, highest basic leaf |
 | CPUID 1 ECX | `vmx`, `smx`, `hypervisor_present` | bits 5, 6, 31 |
-| CPUID 7 | `leaf7_ebx`, `xsaves` | feature bits, ECX bit 3 |
+| CPUID 7 (only when `max_leaf >= 7`) | `leaf7_ebx`, `xsaves` | feature bits, ECX bit 3 |
 | CPUID `0x80000000` | `max_ext_leaf` | highest extended leaf |
 | CPUID `0x80000001` ECX | `svm` | AMD-V, bit 2 |
 | CPUID `0x40000000` | `hv_vendor`, `max_hv_leaf` | 12-byte hypervisor vendor string |
@@ -103,9 +115,10 @@ Two ordering rules that are easy to get wrong:
 Both are asserted in `--selftest` with synthetic register values, so a swapped
 pair fails the build.
 
-Hypervisor vendor strings recognised by name: `Microsoft Hv` (Hyper-V / VBS),
-`VMwareVMware`, `VBoxVBoxVBox`, `KVMKVMKVM`, `XenVMMXenVMM`, `TCGTCGTCGTCG`
-(QEMU TCG), `bhyve bhyve`. Anything else prints as `unknown`.
+Hypervisor vendor strings are matched exactly, not by prefix:
+`Microsoft Hv` (Hyper-V / VBS), `VMwareVMware`, `VBoxVBoxVBox`, `KVMKVMKVM`,
+`XenVMMXenVMM`, `TCGTCGTCGTCG` (QEMU TCG), `bhyve bhyve`. Anything else prints
+as `unknown`.
 
 ---
 
@@ -151,8 +164,10 @@ ldt             0x0000  tr 0x0040
 }
 ```
 
-Full captured output in [`example/out.txt`](example/out.txt) and
-[`example/out.json`](example/out.json).
+Captured output in [`example/out.txt`](example/out.txt),
+[`example/out.json`](example/out.json) and
+[`example/selftest.txt`](example/selftest.txt). Files on disk use LF line
+endings; the live Windows binary emits CRLF.
 
 ---
 
@@ -215,7 +230,7 @@ The `verdict` block is a decision table, not a hardware report:
 
 | VMX | HV-present | conclusion |
 | --- | --- | --- |
-| yes | no | VMX exposed, no outer hypervisor — VMXON should be reachable from ring 0 |
+| yes | no | VMX exposed, no outer hypervisor reported; VMXON not tested here |
 | yes | yes | VMX bit set but an outer hypervisor owns it; needs nested virtualization |
 | no | yes | VMX masked by the outer hypervisor (typical for Hyper-V without nesting) |
 | no | no | check BIOS enablement, SMX, and the feature-control MSR |
@@ -228,10 +243,9 @@ verdict
   vmx masked by the outer hv (typical for hyper-v without nesting)
 ```
 
-That result is the reason a driver doing `__vmx_on` here cannot work, and the
-reason an architecture that attaches to the existing hypervisor is the one that
-does. It is a statement about the current boot configuration, not about the CPU:
-with VBS off or nested virtualization enabled, the same hardware reports VMX yes.
+That result is why a ring-0 `__vmx_on` is blocked on this boot configuration.
+It is a statement about the boot configuration, not the CPU: VMX exposure depends
+on settings this tool does not change.
 
 Do not read `VMX no` as "the CPU lacks VT-x". Read it as "the outer hypervisor
 did not expose VT-x to this partition".
@@ -240,7 +254,8 @@ did not expose VT-x to this partition".
 
 ## What ring 3 cannot tell you
 
-The tool prints this explicitly rather than leaving you to assume:
+The text report names `IA32_FEATURE_CONTROL`, `IA32_VMX_BASIC` and `CR4.VMXE`
+directly. The full list of what ring 3 cannot determine:
 
 - whether `IA32_FEATURE_CONTROL` (0x3A) is locked
 - whether VMXON is allowed outside SMX
@@ -262,15 +277,14 @@ unprivileged instruction could detect virtualization.
 On x64 Windows the check is meaningless. Kernel addresses occupy the upper half
 of the canonical range on every system, hypervisor or not — the IDT base here is
 `0xFFFFF80000001000`, which would have "detected" a VM on bare metal too. The
-tool still prints the IDT/GDT values because they are useful for a different
-purpose: spotting a corrupted descriptor table after a failed VMXON. It does not
-use them to claim anything about virtualization.
+tool still prints the IDT/GDT values as raw register state. It does not use
+them to claim anything about virtualization.
 
 ---
 
 ## Verification
 
-`redpill --selftest` runs nine assertions with no hardware dependency:
+`redpill --selftest` runs eleven assertions with no hardware dependency:
 
 ```
   ok    Dtr is 10 bytes
@@ -280,15 +294,18 @@ use them to claim anything about virtualization.
   ok    Hyper-V vendor name
   ok    VMware vendor name
   ok    KVM vendor name
+  ok    vendor names match exactly
   ok    unknown vendor name
+  ok    json escapes quote and backslash
   ok    Hyper-V interface signature decodes to Hv#1
   PASS
 ```
 
 The remaining output is a live probe and therefore not asserted — the CPUID and
 descriptor values differ per machine and per boot configuration, so
-`example/out.txt` is one specific run from this box. The probe printed all
-fields and exited 0; no driver, no reboot, no firmware access.
+`example/out.txt` is one specific run from this box with line endings
+normalized to LF. The probe printed all fields and exited 0; no driver, no
+reboot, no firmware access. `--help` prints usage and unknown flags exit 2.
 
 ---
 

@@ -6,6 +6,8 @@ redpill selftest
   ok    Hyper-V vendor name
   ok    VMware vendor name
   ok    KVM vendor name
+  ok    vendor names match exactly
   ok    unknown vendor name
+  ok    json escapes quote and backslash
   ok    Hyper-V interface signature decodes to Hv#1
   PASS

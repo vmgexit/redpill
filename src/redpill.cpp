@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <cstring>
 #include <string>
 
 #pragma pack(push, 1)
@@ -28,6 +29,30 @@ static std::string regs_to_str(int b, int c, int d) {
     };
     put(b); put(c); put(d);
     return s;
+}
+
+static std::string json_escape(const std::string& s) {
+    std::string out;
+    for (unsigned char c : s) {
+        switch (c) {
+        case '"':  out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\b': out += "\\b"; break;
+        case '\f': out += "\\f"; break;
+        case '\n': out += "\\n"; break;
+        case '\r': out += "\\r"; break;
+        case '\t': out += "\\t"; break;
+        default:
+            if (c < 0x20) {
+                char b[8];
+                snprintf(b, sizeof b, "\\u%04X", c);
+                out += b;
+            } else {
+                out += (char)c;
+            }
+        }
+    }
+    return out;
 }
 
 struct Probe {
@@ -64,9 +89,11 @@ static Probe collect() {
     p.smx = (r[2] & (1 << 6)) != 0;
     p.hypervisor_present = (r[2] & (1 << 31)) != 0;
 
-    cpuid_at(7, 0, r);
-    p.leaf7_ebx = (uint32_t)r[1];
-    p.xsaves = (r[2] & (1 << 3)) != 0;
+    if (p.max_leaf >= 7) {
+        cpuid_at(7, 0, r);
+        p.leaf7_ebx = (uint32_t)r[1];
+        p.xsaves = (r[2] & (1 << 3)) != 0;
+    }
 
     cpuid_at(0x80000000, 0, r);
     p.max_ext_leaf = (uint32_t)r[0];
@@ -96,13 +123,13 @@ static Probe collect() {
 }
 
 static const char* hv_name(const std::string& v) {
-    if (v.rfind("Microsoft Hv", 0) == 0) return "Hyper-V / VBS";
-    if (v.rfind("VMwareVMware", 0) == 0) return "VMware";
-    if (v.rfind("VBoxVBoxVBox", 0) == 0) return "VirtualBox";
-    if (v.rfind("KVMKVMKVM", 0) == 0) return "KVM";
-    if (v.rfind("XenVMMXenVMM", 0) == 0) return "Xen";
-    if (v.rfind("TCGTCGTCGTCG", 0) == 0) return "QEMU TCG";
-    if (v.rfind("bhyve bhyve", 0) == 0) return "bhyve";
+    if (v == "Microsoft Hv") return "Hyper-V / VBS";
+    if (v == "VMwareVMware") return "VMware";
+    if (v == "VBoxVBoxVBox") return "VirtualBox";
+    if (v == "KVMKVMKVM") return "KVM";
+    if (v == "XenVMMXenVMM") return "Xen";
+    if (v == "TCGTCGTCGTCG") return "QEMU TCG";
+    if (v == "bhyve bhyve") return "bhyve";
     return "unknown";
 }
 
@@ -126,10 +153,11 @@ static void report(const Probe& p) {
     printf("\n");
 
     printf("idt             base 0x%016llX  limit 0x%04X\n",
-           (unsigned long long)p.idt_base, p.idt_limit);
+           (unsigned long long)p.idt_base, (unsigned)p.idt_limit);
     printf("gdt             base 0x%016llX  limit 0x%04X\n",
-           (unsigned long long)p.gdt_base, p.gdt_limit);
-    printf("ldt             0x%04X  tr 0x%04X\n", p.ldt, p.tr);
+           (unsigned long long)p.gdt_base, (unsigned)p.gdt_limit);
+    printf("ldt             0x%04X  tr 0x%04X\n",
+           (unsigned)p.ldt, (unsigned)p.tr);
     printf("\n");
 
     printf("verdict\n");
@@ -138,7 +166,7 @@ static void report(const Probe& p) {
     else
         printf("  already inside %s\n", hv_name(p.hv_vendor));
     if (p.vmx && !p.hypervisor_present)
-        printf("  vmx exposed and no outer hv -> vmxon should be reachable from ring 0\n");
+        printf("  vmx exposed and no outer hv reported; vmxon not tested here\n");
     else if (p.vmx && p.hypervisor_present)
         printf("  vmx bit set but an outer hv owns it; needs nested virtualization\n");
     else if (!p.vmx && p.hypervisor_present)
@@ -155,7 +183,7 @@ static void report(const Probe& p) {
 
 static void report_json(const Probe& p) {
     printf("{\n");
-    printf("  \"cpu_vendor\": \"%s\",\n", p.cpu_vendor.c_str());
+    printf("  \"cpu_vendor\": \"%s\",\n", json_escape(p.cpu_vendor).c_str());
     printf("  \"max_leaf\": %u,\n", p.max_leaf);
     printf("  \"max_ext_leaf\": %u,\n", p.max_ext_leaf);
     printf("  \"vmx\": %s,\n", p.vmx ? "true" : "false");
@@ -164,14 +192,14 @@ static void report_json(const Probe& p) {
     printf("  \"leaf7_ebx\": \"0x%08X\",\n", p.leaf7_ebx);
     printf("  \"xsaves\": %s,\n", p.xsaves ? "true" : "false");
     printf("  \"hypervisor_present\": %s,\n", p.hypervisor_present ? "true" : "false");
-    printf("  \"hv_vendor\": \"%s\",\n", p.hv_vendor.c_str());
+    printf("  \"hv_vendor\": \"%s\",\n", json_escape(p.hv_vendor).c_str());
     printf("  \"hv_max_leaf\": %u,\n", p.max_hv_leaf);
     printf("  \"hv_signature\": \"0x%08X\",\n", p.hv_signature);
     printf("  \"idt_base\": \"0x%016llX\",\n", (unsigned long long)p.idt_base);
-    printf("  \"idt_limit\": %u,\n", p.idt_limit);
+    printf("  \"idt_limit\": %u,\n", (unsigned)p.idt_limit);
     printf("  \"gdt_base\": \"0x%016llX\",\n", (unsigned long long)p.gdt_base);
-    printf("  \"gdt_limit\": %u,\n", p.gdt_limit);
-    printf("  \"ldt\": %u,\n  \"tr\": %u\n", p.ldt, p.tr);
+    printf("  \"gdt_limit\": %u,\n", (unsigned)p.gdt_limit);
+    printf("  \"ldt\": %u,\n  \"tr\": %u\n", (unsigned)p.ldt, (unsigned)p.tr);
     printf("}\n");
 }
 
@@ -192,7 +220,9 @@ static int selftest() {
     ck(strcmp(hv_name("Microsoft Hv"), "Hyper-V / VBS") == 0, "Hyper-V vendor name");
     ck(strcmp(hv_name("VMwareVMware"), "VMware") == 0, "VMware vendor name");
     ck(strcmp(hv_name("KVMKVMKVM"), "KVM") == 0, "KVM vendor name");
+    ck(strcmp(hv_name("VMwareVMwareXYZ"), "unknown") == 0, "vendor names match exactly");
     ck(strcmp(hv_name("something else"), "unknown") == 0, "unknown vendor name");
+    ck(json_escape("a\"b\\c") == "a\\\"b\\\\c", "json escapes quote and backslash");
     auto sig = [](uint32_t v) {
         std::string s;
         for (int i = 0; i < 4; i++) s.push_back((char)((v >> (8 * i)) & 0xff));
@@ -204,10 +234,21 @@ static int selftest() {
     return bad ? 1 : 0;
 }
 
+static void usage() {
+    printf("redpill [--selftest | --json | --help]\n");
+}
+
 int main(int argc, char** argv) {
-    if (argc > 1 && !strcmp(argv[1], "--selftest")) return selftest();
+    if (argc > 2) { usage(); return 2; }
+    if (argc == 2) {
+        if (!strcmp(argv[1], "--selftest")) return selftest();
+        if (!strcmp(argv[1], "--help")) { usage(); return 0; }
+        if (strcmp(argv[1], "--json")) { usage(); return 2; }
+        Probe p = collect();
+        report_json(p);
+        return 0;
+    }
     Probe p = collect();
-    if (argc > 1 && !strcmp(argv[1], "--json")) report_json(p);
-    else report(p);
+    report(p);
     return 0;
 }
