@@ -39,7 +39,7 @@ redpill/
 └── README.md
 ```
 
-**How the pieces fit.** `redpill.cpp` is the whole program: 213 lines, one
+**How the pieces fit.** `redpill.cpp` is the whole program: 254 lines, one
 `Probe` struct, one `collect()`, two reporters. `desc.asm` exists only because
 MSVC x64 has no inline assembler and ml64 is awkward about the 10-byte `m16&64`
 forms — emitting the opcode bytes directly is shorter and makes the encoding
